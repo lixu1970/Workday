@@ -112,41 +112,106 @@ function loadEdits(){
 function saveEdits(edits){ localStorage.setItem(STORAGE_KEY,JSON.stringify(edits)); }
 let EDITS=loadEdits();
 
+function parseSheetName(sheetName){
+  const m=sheetName.match(/^(\d{2})-(\d{2})-([12])$/);
+  if(!m) return null;
+  return {y1:2000+Number(m[1]),y2:2000+Number(m[2]),half:Number(m[3])};
+}
+function utcDate(y,m,d){ return new Date(Date.UTC(y,m-1,d)); }
+function addDays(d,n){ return new Date(d.getTime()+n*86400000); }
+function mondayOf(d){
+  const wd=(d.getUTCDay()+6)%7;
+  return addDays(d,-wd);
+}
+function daysBetween(a,b){ return Math.round((a.getTime()-b.getTime())/86400000); }
+function semesterBounds(sheetName){
+  const p=parseSheetName(sheetName);
+  if(!p) return null;
+  if(p.half===1) return {start:utcDate(p.y1,8,1),end:utcDate(p.y2,2,29)};
+  return {start:utcDate(p.y2,1,1),end:utcDate(p.y2,7,31)};
+}
+function candidateMondays(sheetName){
+  const b=semesterBounds(sheetName); if(!b) return [];
+  let d=mondayOf(b.start), out=[];
+  while(d<=b.end){ out.push(d); d=addDays(d,7); }
+  return out;
+}
+function inferRowMondays(sh){
+  const g=sh.values||[], dayStart=detectDayStart(g), monthCol=dayStart-1;
+  const candidates=candidateMondays(sh.name);
+  const map={}, monthByRow={};
+  let activeMonth=null, prev=null;
+
+  for(let r=4;r<g.length;r++){
+    const row=g[r]||[];
+    if(monthCol>=0 && monthCol<row.length){
+      const mm=monthFromText(row[monthCol]);
+      if(mm) activeMonth=mm;
+    }
+    monthByRow[r]=activeMonth;
+
+    const actual=[];
+    for(let i=0;i<7;i++) actual.push(dayNum(row[dayStart+i]));
+    const count=actual.filter(x=>x!==null).length;
+    if(count<2) continue;
+
+    let best=null;
+    for(const mon of candidates){
+      const week=[]; for(let i=0;i<7;i++) week.push(addDays(mon,i));
+      let score=0;
+      for(let i=0;i<7;i++) if(actual[i]!==null && actual[i]===week[i].getUTCDate()) score++;
+      const minScore=Math.max(2,Math.min(4,count));
+      if(score<minScore) continue;
+
+      let merit=score*100;
+      // Month block is only a reference/tie-break, never the primary condition.
+      if(activeMonth && week.some(d=>d.getUTCMonth()+1===activeMonth)) merit+=150;
+
+      if(prev){
+        const expected=addDays(prev,7);
+        merit-=Math.abs(daysBetween(mon,expected))*3;
+        if(mon<prev) merit-=1000;
+      }
+      if(!best || merit>best.merit || (merit===best.merit && score>best.score)){
+        best={mon,merit,score};
+      }
+    }
+    if(best){ map[r]=best.mon; prev=best.mon; }
+  }
+  return {dayStart,rowMondays:map,monthByRow};
+}
+const SHEET_CALENDAR = {};
+for(const sh of SHEETS) SHEET_CALENDAR[sh.name]=inferRowMondays(sh);
+
 function buildRecords(){
   const out=[];
   for(const sh of SHEETS){
     const g=sh.values||[], semLong=titleSemester(g,sh.name);
-    const dayStart=detectDayStart(g), dayEnd=dayStart+6, monthCol=dayStart-1;
-    let activeMonth=null,inferredMonth=null,prevFirstDay=null;
+    const cal=SHEET_CALENDAR[sh.name], dayStart=cal.dayStart, dayEnd=dayStart+6, monthCol=dayStart-1;
+
     for(let r=4;r<g.length;r++){
-      const row=g[r]||[];
-      if(monthCol>=0){
-        const mv=s(row[monthCol]).trim();
-        let mm=monthFromText(mv);
-        if(!mm&&sh.name==="23-24-1"&&/^DM$/i.test(mv)) mm=1;
-        if(mm) activeMonth=mm;
-      }
-      if(dayStart===1){
-        let explicit=null;
-        for(let c=dayStart;c<=dayEnd;c++){ explicit=explicitMonthInCell(row[c]); if(explicit) break; }
-        const fd=dayNum(row[dayStart]);
-        if(explicit) inferredMonth=explicit;
-        else if(inferredMonth===null) inferredMonth=sh.name.endsWith("-2")?2:8;
-        if(prevFirstDay!==null&&fd!==null&&prevFirstDay>=22&&fd<=7) inferredMonth=inferredMonth===12?1:inferredMonth+1;
-        if(fd!==null) prevFirstDay=fd;
-      }
+      const row=g[r]||[], rowMonday=cal.rowMondays[r]||null;
       for(let c=0;c<row.length;c++){
         let text=s(row[c]).trim();
         if(!text||c===0||c===monthCol||r<4) continue;
-        let month=null,day=null,isCalendar=false;
-        if(c>=dayStart&&c<=dayEnd){
-          day=dayNum(text);
-          if(day!==null){isCalendar=true;month=dayStart===1?inferredMonth:activeMonth;}
-        }
+
         const addr=colName(c)+(r+1), key=cellKey(sh.name,addr);
         if(EDITS[key]) text=EDITS[key].text;
+
+        let month=null,day=null,year=null,isCalendar=false,dateCode=null;
+        if(rowMonday && c>=dayStart && c<=dayEnd){
+          const dn=dayNum(text);
+          const realDate=addDays(rowMonday,c-dayStart);
+          if(dn!==null && dn===realDate.getUTCDate()){
+            isCalendar=true;
+            year=realDate.getUTCFullYear();
+            month=realDate.getUTCMonth()+1;
+            day=realDate.getUTCDate();
+            dateCode=compactSemester(sh.name)+String(month).padStart(2,"0")+String(day).padStart(2,"0");
+          }
+        }
         const searchable=!(isCalendar&&pureDay(text));
-        out.push({sheet:sh.name,semLong,month,day,text,searchable,addr,row:r,col:c,isCalendar});
+        out.push({sheet:sh.name,semLong,year,month,day,dateCode,text,searchable,addr,row:r,col:c,isCalendar});
       }
     }
   }
@@ -157,11 +222,22 @@ let RECORDS=buildRecords();
 function parseShortcut(q){
   const x=q.replace(/\s+/g,"");
   if(!/^\d{9}$/.test(x)) return null;
-  const y1=x.slice(0,2),y2=x.slice(2,4),half=x.slice(4,5);
-  if(half!=="1"&&half!=="2") return null;
-  const sheet=`${y1}-${y2}-${half}`,month=Number(x.slice(5,7)),day=Number(x.slice(7,9));
-  if(month<1||month>12||day<1||day>31) return null;
-  return {sheet,month,day,code:x};
+  const y1=Number(x.slice(0,2)),y2=Number(x.slice(2,4)),half=Number(x.slice(4,5));
+  const month=Number(x.slice(5,7)),day=Number(x.slice(7,9));
+  if((half!==1&&half!==2)||month<1||month>12||day<1||day>31) return null;
+
+  let year;
+  if(half===1) year=month>=8 ? 2000+y1 : 2000+y2;
+  else year=2000+y2;
+
+  const target=utcDate(year,month,day);
+  if(target.getUTCFullYear()!==year || target.getUTCMonth()+1!==month || target.getUTCDate()!==day) return null;
+
+  return {
+    sheet:`${String(y1).padStart(2,"0")}-${String(y2).padStart(2,"0")}-${half}`,
+    year,month,day,code:x,target,
+    weekdayMon:(target.getUTCDay()+6)%7
+  };
 }
 function esc(t){ return s(t).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
 function hi(t,q){
@@ -170,8 +246,7 @@ function hi(t,q){
   return esc(t).replace(new RegExp(safe,"gi"),m=>`<mark>${m}</mark>`);
 }
 function displayDate(rec){
-  if(rec.month&&rec.day) return compactSemester(rec.sheet)+String(rec.month).padStart(2,"0")+String(rec.day).padStart(2,"0");
-  return compactSemester(rec.sheet);
+  return rec.dateCode || compactSemester(rec.sheet);
 }
 function cleanDisplayText(rec){
   let t=rec.text;
@@ -182,7 +257,30 @@ function cleanDisplayText(rec){
   return t.trim();
 }
 function findDateCell(ds){
-  return RECORDS.find(r=>r.sheet===ds.sheet&&r.month===ds.month&&r.day===ds.day&&r.isCalendar)||null;
+  const sh=SHEETS.find(x=>x.name===ds.sheet);
+  if(!sh) return null;
+  const g=sh.values||[], cal=SHEET_CALENDAR[ds.sheet], dayStart=cal.dayStart;
+  const targetMonday=mondayOf(ds.target);
+  const expected=[]; for(let i=0;i<7;i++) expected.push(addDays(targetMonday,i).getUTCDate());
+
+  let best=null;
+  for(let r=4;r<g.length;r++){
+    const row=g[r]||[];
+    const targetCol=dayStart+ds.weekdayMon;
+    const targetDay=dayNum(row[targetCol]);
+    if(targetDay!==ds.day) continue;
+
+    let score=0,count=0;
+    for(let i=0;i<7;i++){
+      const actual=dayNum(row[dayStart+i]);
+      if(actual!==null){ count++; if(actual===expected[i]) score++; }
+    }
+    if(!best || score>best.score){
+      const rec=RECORDS.find(x=>x.sheet===ds.sheet&&x.row===r&&x.col===targetCol);
+      if(rec) best={score,count,rec};
+    }
+  }
+  return best ? best.rec : null;
 }
 function hideEditor(){
   document.getElementById("memo").value="";
