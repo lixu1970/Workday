@@ -15,10 +15,11 @@ h1{font-size:26px;margin:7px 0 12px;text-align:center}
 .top{position:sticky;top:0;background:var(--bg);padding:7px 0 9px;z-index:5}
 #q{width:100%;height:54px;border:2px solid #aeb9c9;border-radius:13px;padding:0 14px;font-size:21px;background:#fff;outline:none}
 #q:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(23,105,224,.10)}
-.actions{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:8px}
+.actions{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:8px}
 button{height:50px;border:0;border-radius:12px;padding:0 6px;font-size:18px;font-weight:750;white-space:nowrap}
 #view{background:var(--blue);color:#fff}
 #add{background:var(--green);color:#fff}
+#save{background:#0f766e;color:#fff}
 #download{background:#626b7a;color:#fff}
 #clear{background:#e4e9f0;color:#27364d}
 .summary{font-size:16px;font-weight:700;margin:9px 2px 6px;color:#445168}
@@ -34,7 +35,7 @@ button{height:50px;border:0;border-radius:12px;padding:0 6px;font-size:18px;font
   h1{font-size:24px;margin-bottom:8px}
   #q{height:52px;font-size:19px;padding:0 10px}
   .actions{gap:5px}
-  button{height:48px;font-size:17px;padding:0 3px}
+  button{height:48px;font-size:16px;padding:0 2px}
   .editArea{font-size:18px;min-height:145px}
 }
 </style>
@@ -47,6 +48,7 @@ button{height:50px;border:0;border-radius:12px;padding:0 6px;font-size:18px;font
     <div class="actions">
       <button id="view">查看</button>
       <button id="add">添加</button>
+      <button id="save">保存</button>
       <button id="download">下载</button>
       <button id="clear">清除</button>
     </div>
@@ -99,6 +101,13 @@ function loadEdits(){
   catch(e){ return {}; }
 }
 function saveEdits(edits){ localStorage.setItem(STORAGE_KEY,JSON.stringify(edits)); }
+function getSheetXmlPath(sheet){
+  const target=s(sheet).trim();
+  for(const [name,path] of Object.entries(SHEET_XML_MAP)){
+    if(s(name).trim()===target) return path;
+  }
+  return null;
+}
 let EDITS=loadEdits();
 function updateEditCount(){
   const n=Object.keys(EDITS).length;
@@ -320,7 +329,7 @@ function doSearch(){
   const seen=new Set();
   hits=hits.filter(r=>{const k=[r.sheet,r.row,r.col].join("|");if(seen.has(k))return false;seen.add(k);return true;});
   if(!hits.length){box.innerHTML='<div class="empty">未找相符信息</div>';return;}
-  sum.textContent=`共找到 ${hits.length} 条；内容可直接修改，修改后按“添加”保存`;
+  sum.textContent=`共找到 ${hits.length} 条；内容可直接修改，修改后按“保存”写入本机`;
   for(const rec of hits) box.appendChild(makeEditor(rec,displayDate(rec)));
 }
 function saveVisibleEdits(showMessage=true){
@@ -344,7 +353,7 @@ function saveVisibleEdits(showMessage=true){
     RECORDS=buildRecords();
     updateEditCount();
   }
-  if(showMessage) setStatus(changed?`已保存 ${changed} 处更新` : "内容没有变化，无需重复保存");
+  if(showMessage) setStatus(changed?`已保存 ${changed} 处更新到本机` : "内容没有变化，已保持原保存内容");
   return changed;
 }
 function clearAll(){
@@ -448,7 +457,7 @@ function buildLatestXlsxBytes(){
   for(const [key,obj] of Object.entries(EDITS)){
     const p=key.lastIndexOf("|");
     if(p<0){ missing.push(key); continue; }
-    const sheet=key.slice(0,p),ref=key.slice(p+1),path=SHEET_XML_MAP[sheet];
+    const sheet=key.slice(0,p),ref=key.slice(p+1),path=getSheetXmlPath(sheet);
     const f=byName.get(path);
     if(!f){ missing.push(key); continue; }
 
@@ -524,6 +533,10 @@ async function downloadLatestExcel(){
 document.getElementById("view").addEventListener("click",doSearch);
 document.getElementById("q").addEventListener("keydown",e=>{if(e.key==="Enter")doSearch();});
 document.getElementById("add").addEventListener("click",()=>saveVisibleEdits(true));
+document.getElementById("save").addEventListener("click",()=>{
+  const n=saveVisibleEdits(false);
+  setStatus(n?`已保存 ${n} 处更新到本机；以后下载会包含全部已保存内容`:`当前内容已保存；以后下载会包含全部已保存内容`);
+});
 document.getElementById("download").addEventListener("click",downloadLatestExcel);
 document.getElementById("clear").addEventListener("click",clearAll);
 updateEditCount();
