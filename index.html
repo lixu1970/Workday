@@ -17,7 +17,7 @@ input{min-width:0;height:52px;border:2px solid #b9c3d2;border-radius:12px;paddin
 button{height:52px;border:0;border-radius:12px;padding:0 14px;font-size:18px;font-weight:700;white-space:nowrap}
 #go{background:var(--blue);color:#fff}
 #clear{background:#e8edf4;color:#27364d}
-#download{width:100%;height:46px;background:#eef3f8;color:#344054;margin:0 0 10px}
+#download{background:#6b7280;color:#fff}
 .summary{font-size:17px;font-weight:700;margin:12px 2px}
 .result,.editor{background:var(--card);border:1px solid var(--line);border-radius:14px;margin:10px 0;padding:13px 14px;box-shadow:0 1px 3px rgba(16,24,40,.05)}
 .date{font-size:18px;font-weight:800;color:#174ea6;margin-bottom:7px}
@@ -28,7 +28,7 @@ mark{background:#fff09a;padding:0 1px}
 .editor.show{display:block}
 .editorTitle{font-size:19px;font-weight:800;margin-bottom:10px}
 textarea{width:100%;min-height:145px;resize:vertical;border:2px solid #b9c3d2;border-radius:12px;padding:12px 13px;font:19px/1.55 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;background:#fff}
-.editorBtns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px}
+.editorBtns{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;margin-top:9px}
 #saveMemo{background:var(--green);color:#fff}
 #loadDay{background:var(--blue);color:#fff}
 #memoDate{width:100%;margin-bottom:9px}
@@ -51,7 +51,6 @@ textarea{width:100%;min-height:145px;resize:vertical;border:2px solid #b9c3d2;bo
     <button id="go">开始检索</button>
     <button id="clear">清除</button>
   </div>
-  <button id="download">下载最新Excel</button>
   <div id="summary" class="summary"></div>
   <div id="results"></div>
   <div id="editor" class="editor show">
@@ -61,8 +60,10 @@ textarea{width:100%;min-height:145px;resize:vertical;border:2px solid #b9c3d2;bo
     <div class="editorBtns">
       <button id="loadDay">读取当天</button>
       <button id="saveMemo">追加保存</button>
+      <button id="download">下载</button>
     </div>
     <div id="dayPreview" class="content" style="margin-top:10px"></div>
+    <div id="editCount" class="saved"></div>
     <div id="saved" class="saved"></div>
   </div>
 </div>
@@ -111,6 +112,12 @@ function loadEdits(){
 }
 function saveEdits(edits){ localStorage.setItem(STORAGE_KEY,JSON.stringify(edits)); }
 let EDITS=loadEdits();
+function updateEditCount(){
+  const n=Object.keys(EDITS).length;
+  const el=document.getElementById("editCount");
+  if(el) el.textContent=n?`本机已保存修改 ${n} 个单元格`:"本机暂无新增修改";
+}
+
 
 function parseSheetName(sheetName){
   const m=sheetName.match(/^(\d{2})-(\d{2})-([12])$/);
@@ -351,6 +358,7 @@ function appendMemo(){
 
   EDITS[cellKey(rec.sheet,rec.addr)]={text:updated,updatedAt:new Date().toISOString()};
   saveEdits(EDITS);
+  updateEditCount();
 
   const sh=SHEETS.find(x=>x.name===rec.sheet);
   if(sh&&sh.values[rec.row]) sh.values[rec.row][rec.col]=updated;
@@ -459,26 +467,90 @@ function buildLatestXlsxBytes(){
   const dec=new TextDecoder(),enc=new TextEncoder();
   const files=ORIGINAL_PACKAGE.map(f=>({name:f.name,data:b64ToBytes(f.b64)}));
   const byName=new Map(files.map(f=>[f.name,f]));
+  let applied=0;
+  const missing=[];
 
   for(const [key,obj] of Object.entries(EDITS)){
-    const p=key.lastIndexOf("|"); if(p<0) continue;
+    const p=key.lastIndexOf("|");
+    if(p<0){ missing.push(key); continue; }
     const sheet=key.slice(0,p),ref=key.slice(p+1),path=SHEET_XML_MAP[sheet];
-    const f=byName.get(path); if(!f) continue;
-    let xml=dec.decode(f.data);
-    xml=patchCellXml(xml,ref,obj.text);
-    f.data=enc.encode(xml);
-  }
-  return zipStore(files);
-}
-function downloadLatestExcel(){
-  try{
-    const bytes=buildLatestXlsxBytes(),blob=new Blob([bytes],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
-    const d=new Date(),name=`0.日志_更新_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}.xlsx`;
-    const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();
-    setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);
-  }catch(e){alert("生成Excel失败："+e.message);}
-}
+    const f=byName.get(path);
+    if(!f){ missing.push(key); continue; }
 
+    let xml=dec.decode(f.data);
+    const before=xml;
+    xml=patchCellXml(xml,ref,obj.text);
+
+    // Verify the requested content is truly present in the worksheet XML.
+    const expected=xmlEsc(obj.text);
+    if(xml===before || !xml.includes(expected)){
+      missing.push(key);
+      continue;
+    }
+    f.data=enc.encode(xml);
+    applied++;
+  }
+
+  if(missing.length){
+    throw new Error(`有 ${missing.length} 条修改未能写入Excel，已停止下载。请不要使用旧文件，重新打开本页后再试。`);
+  }
+  return {bytes:zipStore(files),applied,total:Object.keys(EDITS).length};
+}
+async function downloadLatestExcel(){
+  const status=document.getElementById("saved");
+  try{
+    // If there is currently typed memo text, save it first so export can never omit it.
+    const pending=document.getElementById("memo").value.trim();
+    if(pending){
+      const found=previewDay();
+      if(!found) throw new Error("当前备忘还没有正确的9位日期，不能下载。");
+      appendMemo();
+    }
+
+    // Reload the persisted edit ledger immediately before export.
+    EDITS=loadEdits();
+    updateEditCount();
+
+    const result=buildLatestXlsxBytes();
+    if(result.applied!==result.total){
+      throw new Error(`导出核对失败：应写入 ${result.total} 条，实际 ${result.applied} 条。`);
+    }
+
+    const blob=new Blob([result.bytes],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+    const d=new Date();
+    const name=`0.日志_最新_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}.xlsx`;
+    const file=new File([blob],name,{type:blob.type});
+
+    status.textContent=`已核对 ${result.total}/${result.total} 条修改，Excel已生成`;
+
+    // On iPhone/HTTPS, prefer the native share sheet.
+    // Choose “存储到文件”, then select 文件 → 网页 → 查日志.
+    if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){
+      try{
+        await navigator.share({files:[file]});
+        status.textContent=`已核对 ${result.total}/${result.total} 条修改；请选择“存储到文件”保存`;
+        return;
+      }catch(err){
+        if(err && err.name==="AbortError"){
+          status.textContent="已取消保存；数据仍保留在网页中";
+          return;
+        }
+        // Fall through to normal browser download if file sharing fails.
+      }
+    }
+
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download=name;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1500);
+    status.textContent=`已核对 ${result.total}/${result.total} 条修改并下载`;
+  }catch(e){
+    status.textContent="下载未完成";
+    alert("为防止漏更新，本次没有生成Excel。\n\n"+e.message);
+  }
+}
 document.getElementById("go").addEventListener("click",doSearch);
 document.getElementById("q").addEventListener("keydown",e=>{if(e.key==="Enter")doSearch();});
 document.getElementById("clear").addEventListener("click",clearAll);
@@ -486,6 +558,7 @@ document.getElementById("loadDay").addEventListener("click",previewDay);
 document.getElementById("memoDate").addEventListener("keydown",e=>{if(e.key==="Enter")previewDay();});
 document.getElementById("saveMemo").addEventListener("click",appendMemo);
 document.getElementById("download").addEventListener("click",downloadLatestExcel);
+updateEditCount();
 </script>
 </body>
 </html>
