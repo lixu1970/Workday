@@ -7,65 +7,53 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <title>工作日志检索</title>
 <style>
-:root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#697386;--line:#dfe4ec;--blue:#1769e0;--green:#137333}
+:root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#697386;--line:#dfe4ec;--blue:#1769e0;--green:#137333;--gray:#667085}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
-.wrap{max-width:760px;margin:0 auto;padding:16px 12px 40px}
-h1{font-size:26px;margin:8px 0 14px;text-align:center}
-.searchbar{display:grid;grid-template-columns:1fr auto auto;gap:8px;position:sticky;top:0;background:var(--bg);padding:8px 0 8px;z-index:3}
-input{min-width:0;height:52px;border:2px solid #b9c3d2;border-radius:12px;padding:0 14px;font-size:21px;background:#fff}
-button{height:52px;border:0;border-radius:12px;padding:0 14px;font-size:18px;font-weight:700;white-space:nowrap}
-#go{background:var(--blue);color:#fff}
-#clear{background:#e8edf4;color:#27364d}
-#download{background:#6b7280;color:#fff}
-.summary{font-size:17px;font-weight:700;margin:12px 2px}
-.result,.editor{background:var(--card);border:1px solid var(--line);border-radius:14px;margin:10px 0;padding:13px 14px;box-shadow:0 1px 3px rgba(16,24,40,.05)}
-.date{font-size:18px;font-weight:800;color:#174ea6;margin-bottom:7px}
-.content{font-size:19px;line-height:1.58;white-space:pre-wrap;overflow-wrap:anywhere}
-mark{background:#fff09a;padding:0 1px}
-.empty{background:#fff;border:1px solid var(--line);border-radius:14px;padding:26px 14px;text-align:center;font-size:21px;font-weight:700;color:var(--muted)}
-.editor{display:none}
-.editor.show{display:block}
-.editorTitle{font-size:19px;font-weight:800;margin-bottom:10px}
-textarea{width:100%;min-height:145px;resize:vertical;border:2px solid #b9c3d2;border-radius:12px;padding:12px 13px;font:19px/1.55 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;background:#fff}
-.editorBtns{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;margin-top:9px}
-#saveMemo{background:var(--green);color:#fff}
-#loadDay{background:var(--blue);color:#fff}
-#memoDate{width:100%;margin-bottom:9px}
-.saved{font-size:16px;color:var(--green);font-weight:700;margin-top:8px;min-height:22px}
+.wrap{max-width:760px;margin:0 auto;padding:14px 10px 42px}
+h1{font-size:26px;margin:7px 0 12px;text-align:center}
+.top{position:sticky;top:0;background:var(--bg);padding:7px 0 9px;z-index:5}
+#q{width:100%;height:54px;border:2px solid #aeb9c9;border-radius:13px;padding:0 14px;font-size:21px;background:#fff;outline:none}
+#q:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(23,105,224,.10)}
+.actions{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:8px}
+button{height:50px;border:0;border-radius:12px;padding:0 6px;font-size:18px;font-weight:750;white-space:nowrap}
+#view{background:var(--blue);color:#fff}
+#add{background:var(--green);color:#fff}
+#download{background:#626b7a;color:#fff}
+#clear{background:#e4e9f0;color:#27364d}
+.summary{font-size:16px;font-weight:700;margin:9px 2px 6px;color:#445168}
+.result{background:var(--card);border:1px solid var(--line);border-radius:14px;margin:9px 0;padding:12px;box-shadow:0 1px 3px rgba(16,24,40,.05)}
+.date{font-size:18px;font-weight:800;color:#174ea6;margin:0 2px 7px}
+.editArea{width:100%;min-height:150px;resize:vertical;border:1.5px solid #c6cfdb;border-radius:11px;padding:11px 12px;font:19px/1.55 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;background:#fff;color:var(--text);overflow-wrap:anywhere}
+.editArea:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(23,105,224,.09)}
+.empty{background:#fff;border:1px solid var(--line);border-radius:14px;padding:25px 12px;text-align:center;font-size:20px;font-weight:700;color:var(--muted)}
+.status{font-size:16px;color:var(--green);font-weight:700;margin:8px 2px 0;min-height:22px}
+.hint{font-size:14px;color:var(--muted);margin:2px 2px 0}
 @media(max-width:430px){
-  .wrap{padding:10px 9px 30px}
-  h1{font-size:24px}
-  .searchbar{grid-template-columns:1fr 92px 70px;gap:6px}
-  input{font-size:19px;padding:0 10px}
-  button{font-size:16px;padding:0 8px}
-  .content,textarea{font-size:18px}
+  .wrap{padding:9px 8px 28px}
+  h1{font-size:24px;margin-bottom:8px}
+  #q{height:52px;font-size:19px;padding:0 10px}
+  .actions{gap:5px}
+  button{height:48px;font-size:17px;padding:0 3px}
+  .editArea{font-size:18px;min-height:145px}
 }
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>工作日志检索</h1>
-  <div class="searchbar">
+  <div class="top">
     <input id="q" inputmode="text" autocomplete="off" placeholder="输入关键词或9位日期">
-    <button id="go">开始检索</button>
-    <button id="clear">清除</button>
+    <div class="actions">
+      <button id="view">查看</button>
+      <button id="add">添加</button>
+      <button id="download">下载</button>
+      <button id="clear">清除</button>
+    </div>
   </div>
   <div id="summary" class="summary"></div>
   <div id="results"></div>
-  <div id="editor" class="editor show">
-    <div class="editorTitle">手机备忘录入</div>
-    <input id="memoDate" inputmode="numeric" maxlength="9" placeholder="输入9位日期">
-    <textarea id="memo" placeholder="输入当天要追加的备忘内容"></textarea>
-    <div class="editorBtns">
-      <button id="loadDay">读取当天</button>
-      <button id="saveMemo">追加保存</button>
-      <button id="download">下载</button>
-    </div>
-    <div id="dayPreview" class="content" style="margin-top:10px"></div>
-    <div id="editCount" class="saved"></div>
-    <div id="saved" class="saved"></div>
-  </div>
+  <div id="status" class="status"></div>
 </div>
 
 <script>
@@ -289,94 +277,81 @@ function findDateCell(ds){
   }
   return best ? best.rec : null;
 }
-function hideEditor(){
-  document.getElementById("memo").value="";
-  document.getElementById("memoDate").value="";
-  document.getElementById("dayPreview").textContent="";
-  document.getElementById("saved").textContent="";
+function bodyAndPrefix(rec){
+  const full=s(rec.text);
+  if(!rec.isCalendar) return {prefix:"",body:full.trim()};
+  const m=full.match(/^(\s*\d{1,2}(?:\s*\/\s*\d{1,2})?\s*)/);
+  const prefix=m?m[1]:"";
+  let body=prefix?full.slice(prefix.length):full;
+  body=body.replace(/^\n+/,"").trim();
+  return {prefix,body};
 }
-function showEditor(ds,rec){
-  document.getElementById("memoDate").value=ds.code;
-  previewDay();
+function setStatus(msg,ok=true){
+  const el=document.getElementById("status");
+  el.textContent=msg||"";
+  el.style.color=ok?"var(--green)":"#b42318";
 }
-function previewDay(){
-  const code=document.getElementById("memoDate").value.trim();
-  const ds=parseShortcut(code);
-  const preview=document.getElementById("dayPreview");
-  document.getElementById("saved").textContent="";
-  if(!ds){ preview.textContent="请输入正确的9位日期"; return null; }
-  const rec=findDateCell(ds);
-  if(!rec){ preview.textContent="未找相符信息"; return null; }
-  const body=cleanDisplayText(rec);
-  preview.textContent=body ? body : "当天暂无日志";
-  return {ds,rec};
+function makeEditor(rec,label){
+  const div=document.createElement("div"); div.className="result";
+  const bp=bodyAndPrefix(rec);
+  div.innerHTML=`<div class="date">${esc(label)}</div><textarea class="editArea" data-sheet="${esc(rec.sheet)}" data-addr="${esc(rec.addr)}" data-prefix="${esc(bp.prefix)}">${esc(bp.body)}</textarea>`;
+  return div;
 }
 function renderDate(ds){
   const rec=findDateCell(ds),box=document.getElementById("results"),sum=document.getElementById("summary");
+  box.innerHTML="";
   if(!rec){
     box.innerHTML='<div class="empty">未找相符信息</div>';
-    document.getElementById("memoDate").value=ds.code;
-    previewDay();
+    sum.textContent="";
     return;
   }
-  const body=cleanDisplayText(rec);
-  sum.textContent=body?"找到当天日志":"当天暂无日志";
-  const div=document.createElement("div"); div.className="result";
-  div.innerHTML=`<div class="date">${esc(ds.code)}</div><div class="content">${body?esc(body):"当天暂无日志"}</div>`;
-  box.appendChild(div);
-  showEditor(ds,rec);
+  const bp=bodyAndPrefix(rec);
+  sum.textContent=bp.body?"找到当天日志，可直接修改或追加":"当天暂无日志，可直接输入内容";
+  box.appendChild(makeEditor(rec,ds.code));
 }
 function doSearch(){
   const raw=document.getElementById("q").value.trim(),box=document.getElementById("results"),sum=document.getElementById("summary");
-  box.innerHTML="";sum.textContent="";
-  if(!raw){box.innerHTML='<div class="empty">请输入检索内容</div>';return;}
+  box.innerHTML=""; sum.textContent=""; setStatus("");
+  if(!raw){box.innerHTML='<div class="empty">请输入关键词或日期</div>';return;}
   const ds=parseShortcut(raw);
-  if(ds){renderDate(ds);window.scrollTo({top:0,behavior:"smooth"});return;}
+  if(ds){renderDate(ds);return;}
   const q=raw.toLocaleLowerCase();
   let hits=RECORDS.filter(r=>r.searchable&&r.text.toLocaleLowerCase().includes(q));
   const seen=new Set();
-  hits=hits.filter(r=>{const k=[r.sheet,r.month,r.day,r.text].join("|");if(seen.has(k))return false;seen.add(k);return true;});
+  hits=hits.filter(r=>{const k=[r.sheet,r.row,r.col].join("|");if(seen.has(k))return false;seen.add(k);return true;});
   if(!hits.length){box.innerHTML='<div class="empty">未找相符信息</div>';return;}
-  sum.textContent=`共找到 ${hits.length} 条相符信息`;
-  for(const rec of hits){
-    const div=document.createElement("div");div.className="result";
-    div.innerHTML=`<div class="date">${esc(displayDate(rec))}</div><div class="content">${hi(cleanDisplayText(rec)||rec.text,raw)}</div>`;
-    box.appendChild(div);
-  }
-  window.scrollTo({top:0,behavior:"smooth"});
+  sum.textContent=`共找到 ${hits.length} 条；内容可直接修改，修改后按“添加”保存`;
+  for(const rec of hits) box.appendChild(makeEditor(rec,displayDate(rec)));
 }
-function appendMemo(){
-  const found=previewDay();
-  const memo=document.getElementById("memo").value.trim();
-  const status=document.getElementById("saved");
-  if(!found){ status.textContent="请先输入正确的9位日期"; return; }
-  if(!memo){ status.textContent="请先输入备忘内容"; return; }
-
-  const {ds,rec}=found;
-  const original=rec.text.replace(/\s+$/,"");
-  const updated=original+(original?"\n":"")+memo;
-
-  EDITS[cellKey(rec.sheet,rec.addr)]={text:updated,updatedAt:new Date().toISOString()};
-  saveEdits(EDITS);
-  updateEditCount();
-
-  const sh=SHEETS.find(x=>x.name===rec.sheet);
-  if(sh&&sh.values[rec.row]) sh.values[rec.row][rec.col]=updated;
-  RECORDS=buildRecords();
-
-  document.getElementById("memo").value="";
-  previewDay();
-  status.textContent="已追加保存";
-  document.getElementById("q").value=ds.code;
-  document.getElementById("results").innerHTML="";
-  document.getElementById("summary").textContent="";
-  renderDate(ds);
-  status.textContent="已追加保存";
+function saveVisibleEdits(showMessage=true){
+  const areas=[...document.querySelectorAll(".editArea")];
+  if(!areas.length){ if(showMessage)setStatus("请先查看要修改的日期或内容",false); return 0; }
+  let changed=0;
+  for(const ta of areas){
+    const sheet=ta.dataset.sheet,addr=ta.dataset.addr,prefix=ta.dataset.prefix||"";
+    const rec=RECORDS.find(r=>r.sheet===sheet&&r.addr===addr);
+    if(!rec) continue;
+    const body=ta.value.replace(/^\s+|\s+$/g,"");
+    let updated=prefix ? prefix + (body?"\n"+body:"") : body;
+    if(updated===rec.text) continue;
+    EDITS[cellKey(sheet,addr)]={text:updated,updatedAt:new Date().toISOString()};
+    const sh=SHEETS.find(x=>x.name===sheet);
+    if(sh&&sh.values[rec.row]) sh.values[rec.row][rec.col]=updated;
+    changed++;
+  }
+  if(changed){
+    saveEdits(EDITS);
+    RECORDS=buildRecords();
+    updateEditCount();
+  }
+  if(showMessage) setStatus(changed?`已保存 ${changed} 处更新` : "内容没有变化，无需重复保存");
+  return changed;
 }
 function clearAll(){
   document.getElementById("q").value="";
   document.getElementById("summary").textContent="";
   document.getElementById("results").innerHTML="";
+  setStatus("");
   document.getElementById("q").focus();
 }
 
@@ -497,15 +472,10 @@ function buildLatestXlsxBytes(){
   return {bytes:zipStore(files),applied,total:Object.keys(EDITS).length};
 }
 async function downloadLatestExcel(){
-  const status=document.getElementById("saved");
+  const status=document.getElementById("status");
   try{
-    // If there is currently typed memo text, save it first so export can never omit it.
-    const pending=document.getElementById("memo").value.trim();
-    if(pending){
-      const found=previewDay();
-      if(!found) throw new Error("当前备忘还没有正确的9位日期，不能下载。");
-      appendMemo();
-    }
+    // Save all currently visible edits first, so the downloaded workbook always matches the page.
+    saveVisibleEdits(false);
 
     // Reload the persisted edit ledger immediately before export.
     EDITS=loadEdits();
@@ -551,13 +521,11 @@ async function downloadLatestExcel(){
     alert("为防止漏更新，本次没有生成Excel。\n\n"+e.message);
   }
 }
-document.getElementById("go").addEventListener("click",doSearch);
+document.getElementById("view").addEventListener("click",doSearch);
 document.getElementById("q").addEventListener("keydown",e=>{if(e.key==="Enter")doSearch();});
-document.getElementById("clear").addEventListener("click",clearAll);
-document.getElementById("loadDay").addEventListener("click",previewDay);
-document.getElementById("memoDate").addEventListener("keydown",e=>{if(e.key==="Enter")previewDay();});
-document.getElementById("saveMemo").addEventListener("click",appendMemo);
+document.getElementById("add").addEventListener("click",()=>saveVisibleEdits(true));
 document.getElementById("download").addEventListener("click",downloadLatestExcel);
+document.getElementById("clear").addEventListener("click",clearAll);
 updateEditCount();
 </script>
 </body>
